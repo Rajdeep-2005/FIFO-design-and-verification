@@ -119,6 +119,7 @@ correct FIFO can never produce are declared as `illegal_bins`:
 ### Assertions (`FIFO_ASSERTIONS.sv`)
 Bound to the DUT with `bind`, so they can check internal signals without
 changing the RTL:
+- 22 concurrent assertions and 12 cover properties
 - Reset values of all outputs, `count`, `wr_ptr` and `rd_ptr`
 - `full` / `empty` / `almostfull` / `almostempty` always match `count`
 - `wr_ack`, `overflow` and `underflow` are set **and** cleared correctly
@@ -150,24 +151,46 @@ changing the RTL:
 
 ---
 
-## Running the simulation (QuestaSim)
+## Running the simulation (Vivado XSim, free)
 
-From the `FIFO-Verification/` folder:
+The testbench runs on the free **Vivado ML Standard Edition** simulator (XSim).
+A recent version (2022.1 or newer) is recommended for full support of
+classes, constrained random, SVA and covergroups.
+
+### Option A: Vivado GUI
+1. Create a new RTL project. Skip adding sources at first.
+2. **Add Sources → Add or create design sources**: add `design/FIFO.sv`.
+3. **Add Sources → Add or create simulation sources**: add all files in `verification/`.
+4. In *Simulation Sources*, right-click `FIFO_TOP` → **Set as Top**.
+5. **Run Simulation → Run Behavioral Simulation**, then type `run all` in the Tcl console.
+
+### Option B: Command line
+Open the *Vivado Tcl shell* (or a terminal with Vivado's `bin` folder on `PATH`)
+in the `FIFO-Verification/` folder:
 
 ```bash
-vlib work
+xvlog -sv design/FIFO.sv verification/FIFO_IF.sv verification/FIFO_TRANSACTION.sv verification/FIFO_DRIVER.sv verification/FIFO_MONITOR.sv verification/FIFO_SCOREBOARD.sv verification/FIFO_TEST.sv verification/FIFO_ASSERTIONS.sv verification/FIFO_TOP.sv
 ```
 
 ```bash
-vlog -sv +cover=bcesft design/FIFO.sv verification/FIFO_IF.sv verification/FIFO_TRANSACTION.sv verification/FIFO_DRIVER.sv verification/FIFO_MONITOR.sv verification/FIFO_SCOREBOARD.sv verification/FIFO_TEST.sv verification/FIFO_ASSERTIONS.sv verification/FIFO_TOP.sv
+xelab FIFO_TOP -debug typical -s fifo_sim
 ```
 
 ```bash
-vsim -c -coverage -assertdebug FIFO_TOP -do "run -all; coverage report -details -output coverage_report.txt; quit -f"
+xsim fifo_sim -runall
+```
+
+Functional coverage report (HTML, written to `xsim_coverage_report/`):
+
+```bash
+xcrg -dir xsim.covdb -report_format html -report_dir xsim_coverage_report
 ```
 
 Compile order matters: interface, then the packages (transaction → driver →
 monitor → scoreboard → test), then the modules.
+
+The code is standard IEEE 1800 SystemVerilog, so it also runs on QuestaSim,
+VCS or Xcelium (for example, free on EDA Playground).
 
 ### Expected output
 ```plaintext
@@ -181,4 +204,7 @@ monitor → scoreboard → test), then the modules.
 
 ## Tools
 - SystemVerilog (IEEE 1800-2017)
-- QuestaSim / ModelSim for simulation, coverage and assertions
+- Vivado XSim for simulation, functional coverage and assertions
+
+## Author
+**Rajdeep**
