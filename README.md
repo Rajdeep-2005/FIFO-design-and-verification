@@ -1,96 +1,187 @@
 # Synchronous FIFO Verification
 
-<!-- Add your image here -->
-![Project Image](Doc/FIFO.png)
+**Author:** Rajdeep
 
-## Overview
-
-This project involves the verification of a **Synchronous FIFO** design using SystemVerilog. The goal was to ensure the correctness of the design by implementing a comprehensive testbench, including coverage, assertions, and various checks to verify underflow, overflow, and other edge conditions.
-
-### Key Features of the FIFO:
-- **FIFO_WIDTH**: Data in/out and memory word width (default: 16)
-- **FIFO_DEPTH**: Memory depth (default: 8)
-
-### Ports:
-
-| Port       | Direction | Function                                                                                     |
-|------------|-----------|----------------------------------------------------------------------------------------------|
-| data_in    | Input     | Write Data: The input data bus used when writing the FIFO.                                    |
-| wr_en      | Input     | Write Enable: If the FIFO is not full, asserting this signal causes data to be written in.    |
-| rd_en      | Input     | Read Enable: If the FIFO is not empty, asserting this signal causes data to be read out.      |
-| clk        | Input     | Clock signal.                                                                                 |
-| rst_n      | Input     | Active low asynchronous reset.                                                                |
-| data_out   | Output    | Read Data: The sequential output data bus used when reading from the FIFO.                    |
-| full       | Output    | Full Flag: Indicates that the FIFO is full.                                                   |
-| almostfull | Output    | Almost Full: Indicates that only one more write can be performed before the FIFO is full.     |
-| empty      | Output    | Empty Flag: Indicates that the FIFO is empty.                                                 |
-| almostempty| Output    | Almost Empty: Indicates that only one more read can be performed before the FIFO is empty.    |
-| overflow   | Output    | Indicates that a write request was rejected because the FIFO is full.                        |
-| underflow  | Output    | Indicates that a read request was rejected because the FIFO is empty.                        |
-| wr_ack     | Output    | Write Acknowledge: Indicates that a write request succeeded.                                  |
-
-### Behavior:
-- If both `rd_en` and `wr_en` are high, the FIFO will prioritize writing if empty and reading if full.
-- The **FIFO** design includes checks for underflow and overflow conditions.
-
-## Verification Plan
-
-The detailed **Verification Plan** is included in the [Documentation](Doc/Synchronous%20FIFO%20Verification.pdf).
-
-### Testbench Flow:
-
-1. The top module generates the clock and passes it to the interface.
-2. The testbench (tb) resets the FIFO, randomizes the inputs, and asserts the `test_finished` signal at the end.
-3. A **monitor** is used to sample data from the interface, check for correct output, and calculate functional coverage.
-
-### Key Modules:
-- **FIFO_transaction**: Handles the transactions for the FIFO operations.
-- **FIFO_scoreboard**: Compares the design output with a reference model and counts errors.
-- **FIFO_coverage**: Collects functional coverage using a covergroup for `wr_en`, `rd_en`, and the FIFO control signals.
-
-### Functional Coverage:
-Cross-coverage between write enable, read enable, and all control output signals is implemented to ensure that all possible states of the FIFO are exercised during verification.
-
-### Assertions:
-Assertions are added to all output flags (except `data_out`) and internal counters to ensure correct behavior. Conditional compilation is used to guard these assertions.
+A parameterized synchronous FIFO written in SystemVerilog and verified with a
+class-based SystemVerilog testbench. The testbench has a driver, a monitor, a
+queue-based scoreboard, functional coverage and SVA assertions. It runs directed
+corner cases first and then constrained-random traffic.
 
 ---
 
-## Repository Structure:
+## FIFO design
+
+### Parameters
+
+| Parameter    | Default | Description                       |
+|--------------|---------|-----------------------------------|
+| `FIFO_WIDTH` | 16      | Width of data in/out and memory   |
+| `FIFO_DEPTH` | 8       | Number of words (must be ≥ 2)     |
+
+### Ports
+
+| Port          | Dir    | Description                                                        |
+|---------------|--------|--------------------------------------------------------------------|
+| `clk`         | Input  | Clock                                                              |
+| `rst_n`       | Input  | Active-low **asynchronous** reset                                  |
+| `wr_en`       | Input  | Write enable. Data is written if the FIFO is not full              |
+| `rd_en`       | Input  | Read enable. Data is read if the FIFO is not empty                 |
+| `data_in`     | Input  | Write data                                                         |
+| `data_out`    | Output | Read data (registered)                                             |
+| `wr_ack`      | Output | Registered. The write in the previous cycle succeeded              |
+| `overflow`    | Output | Registered. A write was rejected because the FIFO was full         |
+| `underflow`   | Output | Registered. A read was rejected because the FIFO was empty         |
+| `full`        | Output | FIFO is full (`count == FIFO_DEPTH`)                               |
+| `empty`       | Output | FIFO is empty (`count == 0`)                                       |
+| `almostfull`  | Output | One more write will make the FIFO full (`count == FIFO_DEPTH-1`)   |
+| `almostempty` | Output | One more read will make the FIFO empty (`count == 1`)              |
+
+### Simultaneous read and write
+
+| FIFO state       | Result                                      |
+|------------------|---------------------------------------------|
+| Empty            | Only the write happens (and `underflow` = 1) |
+| Full             | Only the read happens (and `overflow` = 1)   |
+| Neither          | Both happen, `count` does not change         |
+
+---
+
+## Repository structure
 
 ```plaintext
 FIFO-Verification/
 │
-├── design/                               # Contains the RTL design files for the FIFO
-│   └── FIFO.sv
+├── design/
+│   └── FIFO.sv                 # RTL of the synchronous FIFO
 │
-├── verification/                         # Verification-related files
-│   ├── FIFO_IF.sv                        # FIFO Interface
-│   ├── FIFO_CONFIG.sv                    # Configuration file for verification environment
-│   ├── FIFO_TRANSACTION.sv               # Handles transaction details for verification
-│   ├── FIFO_SCOREBOARD.sv                # Compares DUT outputs with reference model
-│   ├── FIFO_COVERAGE.sv                  # Functional coverage collection
-│   ├── FIFO_DRIVER.sv                    # Drives stimulus to the DUT
-│   ├── FIFO_MONITOR.sv                   # Monitors and checks the DUT outputs
-│   ├── FIFO_AGENT.sv                     # Agent combining driver and monitor
-│   ├── FIFO_SEQUENCER.sv                 # Sequencer for controlling stimulus generation
-│   ├── FIFO_TEST.sv                      # Test file that runs the verification
-│   ├── FIFO_TOP.sv                       # Top-level module for running the simulation
-│   └── FIFO_SVA.sv                       # SystemVerilog Assertions for the design
+├── verification/
+│   ├── FIFO_IF.sv              # Interface + monitor clocking block
+│   ├── FIFO_TRANSACTION.sv     # Transaction class, constraints, shared parameters
+│   ├── FIFO_DRIVER.sv          # Drives transactions on the negedge of clk
+│   ├── FIFO_MONITOR.sv         # Monitor + functional coverage (covergroup, crosses)
+│   ├── FIFO_SCOREBOARD.sv      # Queue-based reference model + checker
+│   ├── FIFO_TEST.sv            # Test: directed + constrained-random phases
+│   ├── FIFO_ASSERTIONS.sv      # SVA, bound to the DUT with `bind`
+│   └── FIFO_TOP.sv             # Top module: clock, interface, DUT, bind, test
 │
-└── README.md                             # Project documentation
- ```
+└── README.md
+```
 
-## Getting Started
+---
 
-### Prerequisites:
-- **QuestaSim/Mentor Graphics** for simulation.
-- **SystemVerilog** for verification.
+## Testbench architecture
 
-### Running the Testbench:
-1. Compile the design and testbench files using your simulator.
-2. Run the `FIFO_TEST` module to start the simulation.
-3. Check the simulation results and coverage report for 100% functional and code coverage.
+```plaintext
+                 +-------------------------- FIFO_TOP ---------------------------+
+                 |                                                               |
+   FIFO_test --> |  FIFO_driver --(negedge)--> fifo_if --> FIFO (DUT)            |
+                 |                                 |          ^                  |
+                 |                                 |          | bind             |
+                 |                                 |      FIFO_ASSERTIONS        |
+                 |                                 v                             |
+                 |                FIFO_monitor (mon_cb @negedge, #1step)         |
+                 |                    |                     |                    |
+                 |              FIFO_coverage         mailbox                    |
+                 |                                          v                    |
+                 |                                   FIFO_scoreboard             |
+                 +---------------------------------------------------------------+
+```
+
+**Timing (race-free).** The driver changes inputs on the **negedge**. The DUT
+samples them on the **posedge**. The monitor samples on the next **negedge**
+through a clocking block with `#1step` input skew, so each sample holds the
+inputs of one cycle and the outputs the DUT produced for them.
+
+### Test phases (`FIFO_TEST.sv`)
+1. **Reset**: 2 cycles.
+2. **Directed corner cases**: underflow, read+write on empty, fill to
+   almostfull, full, overflow, read+write on full, drain to almostempty,
+   empty, and a reset in the middle of traffic.
+3. **Constrained random**: three phases of 1000 cycles each, with different
+   `wr_en`/`rd_en` probabilities (70/30, 30/70, 50/50) so both the full side
+   and the empty side are exercised. Reset is asserted randomly (2%).
+
+### Scoreboard
+A SystemVerilog queue is the reference model. For every cycle it works out
+the expected `data_out`, `wr_ack`, `overflow`, `underflow`, `full`, `empty`,
+`almostfull` and `almostempty`. It compares each one with the DUT using `!==`,
+so X/Z values are caught too.
+
+### Functional coverage
+Every output flag is crossed with `wr_en` and `rd_en`. Combinations that a
+correct FIFO can never produce are declared as `illegal_bins`:
+- `wr_ack = 1` with `wr_en = 0`
+- `overflow = 1` with `wr_en = 0`
+- `underflow = 1` with `rd_en = 0`
+- `full = 1` after a cycle with `rd_en = 1`
+- `empty = 1` after a cycle with `wr_en = 1`
+
+### Assertions (`FIFO_ASSERTIONS.sv`)
+Bound to the DUT with `bind`, so they can check internal signals without
+changing the RTL:
+- Reset values of all outputs, `count`, `wr_ptr` and `rd_ptr`
+- `full` / `empty` / `almostfull` / `almostempty` always match `count`
+- `wr_ack`, `overflow` and `underflow` are set **and** cleared correctly
+- `wr_ptr` / `rd_ptr` increment and wrap on a valid write/read, otherwise they hold
+- `count` behaviour for write-only, read-only, idle and the three read+write cases
+- Cover properties for every scenario, including full→empty and pointer wrap
+
+---
+
+## Bugs found and fixed in the RTL
+
+| # | Bug in the original design                                              | Fix                                         |
+|---|-------------------------------------------------------------------------|---------------------------------------------|
+| 1 | `almostfull` was asserted at `FIFO_DEPTH-2`                              | Asserted at `FIFO_DEPTH-1`                  |
+| 2 | `wr_ack` and `overflow` were not reset                                   | Cleared on reset                            |
+| 3 | `underflow` was combinational, while `overflow` was registered           | Made registered, like `overflow`            |
+| 4 | Read+write on an empty/full FIFO did not update `count`                  | Count follows the accepted operation only   |
+| 5 | `data_out` was not reset                                                 | Cleared on reset                            |
+| 6 | Memory was written inside the async-reset block (bad for synthesis)      | Memory moved to its own `always_ff`         |
+| 7 | Pointer wrap only worked when `FIFO_DEPTH` was a power of 2              | Pointers wrap explicitly at `FIFO_DEPTH-1`  |
+
+## Bugs fixed in the testbench
+
+- The monitor and the stimulus both used `#20` delays, which caused a race. Now the driver uses the negedge and the monitor uses a `#1step` clocking block.
+- The scoreboard incremented the wrong counter for `almostempty`.
+- Coverage could never reach 100%: the `wr_en=1 / empty=1` cross bins are impossible and are now `illegal_bins`.
+- Assertions were mixed into the RTL, and an `` `ifdef `` inside a bare `if` broke the code when `SIM` was not defined. They now live in a separate module that is bound to the DUT.
+- `underflow` used blocking assignments inside a sequential block. It now uses non-blocking assignments.
+
+---
+
+## Running the simulation (QuestaSim)
+
+From the `FIFO-Verification/` folder:
+
+```bash
+vlib work
+```
+
+```bash
+vlog -sv +cover=bcesft design/FIFO.sv verification/FIFO_IF.sv verification/FIFO_TRANSACTION.sv verification/FIFO_DRIVER.sv verification/FIFO_MONITOR.sv verification/FIFO_SCOREBOARD.sv verification/FIFO_TEST.sv verification/FIFO_ASSERTIONS.sv verification/FIFO_TOP.sv
+```
+
+```bash
+vsim -c -coverage -assertdebug FIFO_TOP -do "run -all; coverage report -details -output coverage_report.txt; quit -f"
+```
+
+Compile order matters: interface, then the packages (transaction → driver →
+monitor → scoreboard → test), then the modules.
+
+### Expected output
+```plaintext
+ SCOREBOARD : cycles checked = ...
+              errors         = 0
+ FUNCTIONAL COVERAGE = 100.00 %
+ ***************  TEST PASSED  ***************
+```
+
+---
+
+## Tools
+- SystemVerilog (IEEE 1800-2017)
+- QuestaSim / ModelSim for simulation, coverage and assertions
 
 ## Author
-- **Rajdeep**
+**Rajdeep**
