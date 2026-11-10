@@ -183,5 +183,3 @@ monitor → scoreboard → test), then the modules.
 - SystemVerilog (IEEE 1800-2017)
 - QuestaSim / ModelSim for simulation, coverage and assertions
 
-## Author
-**Rajdeep**
