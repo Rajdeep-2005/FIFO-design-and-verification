@@ -10,8 +10,7 @@
 
 module FIFO_ASSERTIONS #(
     parameter int FIFO_WIDTH = 16,
-    parameter int FIFO_DEPTH = 8,
-    localparam int ADDR_W    = $clog2(FIFO_DEPTH)
+    parameter int FIFO_DEPTH = 8
 ) (
     input logic                  clk,
     input logic                  rst_n,
@@ -27,49 +26,60 @@ module FIFO_ASSERTIONS #(
     input logic                  almostfull,
     input logic                  almostempty,
     // internal DUT signals
-    input logic [ADDR_W:0]       count,
-    input logic [ADDR_W-1:0]     wr_ptr,
-    input logic [ADDR_W-1:0]     rd_ptr
+    input logic [$clog2(FIFO_DEPTH):0]   count,
+    input logic [$clog2(FIFO_DEPTH)-1:0] wr_ptr,
+    input logic [$clog2(FIFO_DEPTH)-1:0] rd_ptr
 );
+
+    localparam int ADDR_W = $clog2(FIFO_DEPTH);
 
     function automatic logic [ADDR_W-1:0] next_ptr(logic [ADDR_W-1:0] p);
         return (p == ADDR_W'(FIFO_DEPTH-1)) ? '0 : p + 1'b1;
     endfunction
 
     // =========================================================================
-    // Immediate (deferred) assertions
+    // Reset checks: everything must be cleared while rst_n is low
+    // (the testbench always holds reset across at least one posedge)
     // =========================================================================
-
-    // Asynchronous reset: everything must be cleared while rst_n is low
-    always_comb begin
-        if (rst_n === 1'b0) begin
-            rst_count_a    : assert final (count == 0)       else $error("count not 0 in reset");
-            rst_wr_ptr_a   : assert final (wr_ptr == 0)      else $error("wr_ptr not 0 in reset");
-            rst_rd_ptr_a   : assert final (rd_ptr == 0)      else $error("rd_ptr not 0 in reset");
-            rst_full_a     : assert final (!full)            else $error("full set in reset");
-            rst_empty_a    : assert final (empty)            else $error("empty clear in reset");
-            rst_afull_a    : assert final (!almostfull)      else $error("almostfull set in reset");
-            rst_aempty_a   : assert final (!almostempty)     else $error("almostempty set in reset");
-            rst_wr_ack_a   : assert final (!wr_ack)          else $error("wr_ack set in reset");
-            rst_overflow_a : assert final (!overflow)        else $error("overflow set in reset");
-            rst_underflow_a: assert final (!underflow)       else $error("underflow set in reset");
-            rst_data_out_a : assert final (data_out == '0)   else $error("data_out not 0 in reset");
-        end
-    end
-
-    // Combinational flags must always match count
-    always_comb begin
-        if (rst_n === 1'b1) begin
-            full_a        : assert final (full        == (count == FIFO_DEPTH))   else $error("full flag wrong");
-            empty_a       : assert final (empty       == (count == 0))            else $error("empty flag wrong");
-            almostfull_a  : assert final (almostfull  == (count == FIFO_DEPTH-1)) else $error("almostfull flag wrong");
-            almostempty_a : assert final (almostempty == (count == 1))            else $error("almostempty flag wrong");
-            count_range_a : assert final (count <= FIFO_DEPTH)                    else $error("count out of range");
-        end
-    end
+    property reset_values_p;
+        @(posedge clk)
+            !rst_n |-> (count == 0) && (wr_ptr == 0) && (rd_ptr == 0) &&
+                       !full && empty && !almostfull && !almostempty &&
+                       !wr_ack && !overflow && !underflow && (data_out == '0);
+    endproperty
 
     // =========================================================================
-    // Concurrent properties
+    // Flags must always match count
+    // =========================================================================
+    property full_flag_p;
+        @(posedge clk) disable iff (!rst_n) full == (count == FIFO_DEPTH);
+    endproperty
+
+    property empty_flag_p;
+        @(posedge clk) disable iff (!rst_n) empty == (count == 0);
+    endproperty
+
+    property almostfull_flag_p;
+        @(posedge clk) disable iff (!rst_n) almostfull == (count == FIFO_DEPTH-1);
+    endproperty
+
+    property almostempty_flag_p;
+        @(posedge clk) disable iff (!rst_n) almostempty == (count == 1);
+    endproperty
+
+    property count_range_p;
+        @(posedge clk) disable iff (!rst_n) count <= FIFO_DEPTH;
+    endproperty
+
+    reset_values_a     : assert property (reset_values_p)     else $error("outputs/internals not cleared in reset");
+    full_flag_a        : assert property (full_flag_p)        else $error("full flag wrong");
+    empty_flag_a       : assert property (empty_flag_p)       else $error("empty flag wrong");
+    almostfull_flag_a  : assert property (almostfull_flag_p)  else $error("almostfull flag wrong");
+    almostempty_flag_a : assert property (almostempty_flag_p) else $error("almostempty flag wrong");
+    count_range_a      : assert property (count_range_p)      else $error("count out of range");
+
+    // =========================================================================
+    // Concurrent properties: flags, pointers, count
     // =========================================================================
 
     // ---- output flags
